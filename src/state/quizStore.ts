@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import rawData from '../data/questions_variants.json';
 
 // Types
@@ -38,6 +39,7 @@ interface QuizState {
   answered: boolean;
   score: number;
   shuffleEnabled: boolean;
+  timeLeft: number | null;
 
   // Actions
   startTest: (categoryIndex: number) => void;
@@ -46,6 +48,7 @@ interface QuizState {
   nextQuestion: () => void;
   restart: () => void;
   toggleShuffle: () => void;
+  decrementTime: () => void;
 }
 
 // Process raw JSON data into typed categories
@@ -62,17 +65,20 @@ function processData(raw: any): Category[] {
         const letterToIndex: Record<string, number> = {};
         if (Array.isArray(q.options)) {
           q.options.forEach((opt: any, idx: number) => {
-            if (opt && opt.id) {
+            if (opt && opt.id && typeof opt.id === 'string') {
               letterToIndex[opt.id.toLowerCase()] = idx;
             }
           });
         }
-        const correctIdx = letterToIndex[q.correctAnswer?.toLowerCase() ?? ''] ?? 0;
+        const correctIdx = letterToIndex[String(q.correctAnswer || '').toLowerCase()] ?? 0;
 
         return {
           id: q.id || `q-${Math.random()}`,
           text: q.text || '',
-          options: Array.isArray(q.options) ? q.options.map((o: any) => ({ id: o.id, text: o.text })) : [],
+          options: Array.isArray(q.options) ? q.options.map((o: any) => ({ 
+            id: o?.id || '', 
+            text: o?.text || '' 
+          })) : [],
           correctAnswerIndex: correctIdx,
           explanation: q.explanation || '',
         };
@@ -105,84 +111,10 @@ function shuffleQuestionOptions(question: Question): Question {
 
 const categories = processData(rawData);
 
-export const useQuizStore = create<QuizState>((set, get) => ({
-  categories,
-  screen: 'home',
-  currentCategoryIndex: null,
-  currentQuestions: [],
-  currentQuestionIdx: 0,
-  selectedAnswers: [],
-  answered: false,
-  score: 0,
-  shuffleEnabled: false,
-
-  startTest: (categoryIndex) => {
-    const cat = get().categories[categoryIndex];
-    if (!cat) return;
-    const questions = get().shuffleEnabled
-      ? cat.questions.map(shuffleQuestionOptions)
-      : cat.questions;
-    set({
-      screen: 'quiz',
-      currentCategoryIndex: categoryIndex,
-      currentQuestions: questions,
-      currentQuestionIdx: 0,
-      selectedAnswers: new Array(questions.length).fill(null),
-      answered: false,
-      score: 0,
-    });
-  },
-
-
-
-  startRandomTest: () => {
-    const cats = get().categories;
-    const allQuestions = cats.flatMap((c) => c.questions);
-    let selected = shuffleArray(allQuestions).slice(0, 20);
-    if (get().shuffleEnabled) {
-      selected = selected.map(shuffleQuestionOptions);
-    }
-    set({
-      screen: 'quiz',
-      currentCategoryIndex: null,
-      currentQuestions: selected,
-      currentQuestionIdx: 0,
-      selectedAnswers: new Array(selected.length).fill(null),
-      answered: false,
-      score: 0,
-    });
-  },
-
-  answerQuestion: (optionIndex) => {
-    const { currentQuestionIdx, currentQuestions, selectedAnswers, score } = get();
-    if (get().answered) return;
-
-    const newAnswers = [...selectedAnswers];
-    newAnswers[currentQuestionIdx] = optionIndex;
-
-    const isCorrect = optionIndex === currentQuestions[currentQuestionIdx].correctAnswerIndex;
-
-    set({
-      selectedAnswers: newAnswers,
-      answered: true,
-      score: isCorrect ? score + 1 : score,
-    });
-  },
-
-  nextQuestion: () => {
-    const { currentQuestionIdx, currentQuestions } = get();
-    if (currentQuestionIdx < currentQuestions.length - 1) {
-      set({
-        currentQuestionIdx: currentQuestionIdx + 1,
-        answered: false,
-      });
-    } else {
-      set({ screen: 'result' });
-    }
-  },
-
-  restart: () => {
-    set({
+export const useQuizStore = create<QuizState>()(
+  persist(
+    (set, get) => ({
+      categories,
       screen: 'home',
       currentCategoryIndex: null,
       currentQuestions: [],
@@ -190,10 +122,116 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       selectedAnswers: [],
       answered: false,
       score: 0,
-    });
-  },
+      shuffleEnabled: false,
+      timeLeft: null,
 
-  toggleShuffle: () => {
-    set({ shuffleEnabled: !get().shuffleEnabled });
-  },
-}));
+      startTest: (categoryIndex) => {
+        const cat = get().categories[categoryIndex];
+        if (!cat) return;
+        const questions = get().shuffleEnabled
+          ? cat.questions.map(shuffleQuestionOptions)
+          : cat.questions;
+        
+        // 1 minute per question
+        const timeLimit = questions.length * 60;
+
+        set({
+          screen: 'quiz',
+          currentCategoryIndex: categoryIndex,
+          currentQuestions: questions,
+          currentQuestionIdx: 0,
+          selectedAnswers: new Array(questions.length).fill(null),
+          answered: false,
+          score: 0,
+          timeLeft: timeLimit,
+        });
+      },
+
+      startRandomTest: () => {
+        const cats = get().categories;
+        const allQuestions = cats.flatMap((c) => c.questions);
+        let selected = shuffleArray(allQuestions).slice(0, 20);
+        if (get().shuffleEnabled) {
+          selected = selected.map(shuffleQuestionOptions);
+        }
+        
+        // 1 minute per question (20 mins for random test)
+        const timeLimit = selected.length * 60;
+
+        set({
+          screen: 'quiz',
+          currentCategoryIndex: null,
+          currentQuestions: selected,
+          currentQuestionIdx: 0,
+          selectedAnswers: new Array(selected.length).fill(null),
+          answered: false,
+          score: 0,
+          timeLeft: timeLimit,
+        });
+      },
+
+      answerQuestion: (optionIndex) => {
+        const { currentQuestionIdx, currentQuestions, selectedAnswers, score } = get();
+        if (get().answered) return;
+
+        const newAnswers = [...selectedAnswers];
+        newAnswers[currentQuestionIdx] = optionIndex;
+
+        const isCorrect = optionIndex === currentQuestions[currentQuestionIdx].correctAnswerIndex;
+
+        set({
+          selectedAnswers: newAnswers,
+          answered: true,
+          score: isCorrect ? score + 1 : score,
+        });
+      },
+
+      nextQuestion: () => {
+        const { currentQuestionIdx, currentQuestions } = get();
+        if (currentQuestionIdx < currentQuestions.length - 1) {
+          set({
+            currentQuestionIdx: currentQuestionIdx + 1,
+            answered: false,
+          });
+        } else {
+          set({ screen: 'result' });
+        }
+      },
+
+      restart: () => {
+        set({
+          screen: 'home',
+          currentCategoryIndex: null,
+          currentQuestions: [],
+          currentQuestionIdx: 0,
+          selectedAnswers: [],
+          answered: false,
+          score: 0,
+          timeLeft: null,
+        });
+      },
+
+      toggleShuffle: () => {
+        set({ shuffleEnabled: !get().shuffleEnabled });
+      },
+
+      decrementTime: () => {
+        const { timeLeft, screen } = get();
+        if (screen === 'quiz' && timeLeft !== null) {
+          if (timeLeft <= 1) {
+            set({ timeLeft: 0, screen: 'result' });
+          } else {
+            set({ timeLeft: timeLeft - 1 });
+          }
+        }
+      },
+    }),
+    {
+      name: 'quiz-storage',
+      partialize: (state) => ({
+        shuffleEnabled: state.shuffleEnabled,
+      }),
+    }
+  )
+);
+

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useQuizStore } from '../state/quizStore';
 import { AnswersTab } from './AnswersTab';
+import { LibraryTab } from './LibraryTab';
+import { ArticlesTab } from './ArticlesTab';
 import {
   BookOpen,
   GraduationCap,
@@ -213,10 +215,8 @@ export const HomeScreen: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.2 }}
-              className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 text-center shadow-lg border border-white/50"
             >
-              <Library className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 font-medium">Библиотека в разработке</p>
+              <LibraryTab />
             </motion.div>
           )}
 
@@ -227,10 +227,8 @@ export const HomeScreen: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.2 }}
-              className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 text-center shadow-lg border border-white/50"
             >
-              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 font-medium">Статьи в разработке</p>
+              <ArticlesTab />
             </motion.div>
           )}
         </AnimatePresence>

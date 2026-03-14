@@ -12,7 +12,23 @@ export const QuizScreen: React.FC = () => {
     answerQuestion,
     nextQuestion,
     restart,
+    timeLeft,
+    decrementTime,
   } = useQuizStore();
+
+  React.useEffect(() => {
+    if (timeLeft === null) return;
+    const timer = setInterval(() => {
+      decrementTime();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft, decrementTime]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   if (!currentQuestions.length) return null;
 
@@ -34,6 +50,12 @@ export const QuizScreen: React.FC = () => {
             <ArrowLeft className="w-5 h-5" />
             <span className="text-sm font-medium">Выход</span>
           </button>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">оставшееся время</span>
+            <span className={`text-base font-black tabular-nums transition-colors ${timeLeft && timeLeft < 60 ? 'text-red-500' : 'text-indigo-600'}`}>
+              {timeLeft !== null ? formatTime(timeLeft) : '0:00'}
+            </span>
+          </div>
           <span className="text-sm font-bold text-gray-700">
             {currentQuestionIdx + 1} / {totalQuestions}
           </span>
